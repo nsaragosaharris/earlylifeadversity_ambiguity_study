@@ -9,16 +9,14 @@ from scipy import stats
 import re
 
 '''
-This script uses Python 3, so make sure that you are using Python 3 and have the correct libraries installed.
+This script uses Python 3, so make sure that you are using Python 3 and have the correct libraries installed (see requirements.txt).
 
 This script gets multivoxel estimates of BOLD signal within the a given region of interest for angry, surprised, and happy trials for each participant.
 
 It uses the unsmoothed first level models (Ghost_run1_mod1_unsmoothed.feat, Ghost_run2_mod1_unsmoothed.feat, Ghost_run3_mod1_unsmoothed.feat), which has the three conditions modeled and combined, for each run, for each participant. So at this point, each participant should have whole-brain beta estimates (unsmoothed) that corresponds to their average responses to angry, surprised, and happy faces for each run (three total). Within each ROI, we are going to estimate the overlap in those representations, and then average the correlations across the runs to get a single correlation for each pair for each participant.
+Instead of using second level models (Ghost_lev2_mod1_unsmoothed.gfeat) but that step transforms out of native space so doing this instead.
 
-Note: Tried using second level models (Ghost_lev2_mod1_unsmoothed.gfeat) but that step transforms out of native space so doing this instead.
-Note: Also not creating the raw values csv anymore since the correlations look correct.
-
-Structure of the first level models: /u/project/silvers/data/CTS/CTS_ID/model/Ghost_run*_mod1_unsmoothed.feat/stats/zstat[1-3].nii.gz.
+Structure of the first level models: /u/project/silvers/data/P/P_ID/model/Ghost_run*_mod1_unsmoothed.feat/stats/zstat[1-3].nii.gz.
 
 Note: The 'detail' variable used to be the 'threshold' variable, but since the cortical masks (e.g., vmPFC and anterior insula) are not thresholded (because they were not created from Harvard Oxford atlas, but rather downloaded from a meta analysis), I changed it to be more flexible to these different masks. The script now simply requires that all masks are saved in the same directory, with the format region_hemisphere_detail.nii.gz. 
 
@@ -30,7 +28,7 @@ If you are creating masks that were not thresholded (e.g., the ones from Xu et a
 
 Example: anteriorinsula_L_xu2021.nii.gz(region = 'anteriorinsula', detail = 'xu2021', hemisphere = 'L').
 
-This script creates a dictionary to match zstat1, zstat2, and zstat3 to the correct conditions (this matching information is from a design image from an example level 1 feat directory; make sure this is correct!).
+This script creates a dictionary to match zstat1, zstat2, and zstat3 to the correct conditions (this matching information is from a design image from an example level 1 feat directory; if you are using this code for your own project, make sure this is correct!).
 zstat1: angry
 zstat2: happy
 zstat3: surprised
@@ -66,11 +64,10 @@ def setMasker(msk, smth):
 zstat_dict = {'zstat1':'angry', 'zstat2':'happy', 'zstat3':'surprised'}
 zstats = ['zstat1','zstat2','zstat3']
 
-studydir = '/u/project/silvers/data/CTS'
-outputdir = '/u/home/n/nsaragos/scripts/cts/rsa_conditionlevel_byparticipant/correlations'
+studydir = '' # Where the first level model data are saved.
+outputdir = '' # Where you want to save the correlation files.
 
-participants = ['CTS001','CTS003','CTS004','CTS006','CTS009','CTS011','CTS012','CTS014','CTS019','CTS023','CTS026','CTS028', 'CTS030','CTS031','CTS034','CTS038','CTS039','CTS042','CTS044','CTS047','CTS053','CTS054','CTS057','CTS058', 'CTS060','CTS062','CTS070','CTS073','CTS074','CTS075','CTS077','CTS079','CTS081','CTS083','CTS084','CTS088','CTS096','CTS098','CTS099','CTS100','CTS101']
-#participants = ['CTS001']
+participants = ['P_001','P_002']
 region = 'V1' # Input mask of interest here. Make sure it matches how your masks are saved (e.g., 'amy' for 'amygdala', etc.).
 detail = 'Thr75' # Make sure this matches the format of your mask files (e.g., 'Thr25', 'xu2021', etc.; see earlier notes for more information).
 hemisphere = 'L' # Usually, 'bilateral', 'R', or 'L'. If you want to make all three, change and run script for each separately.
@@ -157,12 +154,3 @@ correlation_df[f'AO_HO_corr_average_{region}_{hemisphere}_{detail}'] = correlati
 
 # Save the correlation_df to a csv.
 correlation_df.to_csv(f'{outputdir}/ROI_zscored_correlations/allparticipants_{region}_{hemisphere}_correlations_ROIzscored.csv')
-
-
-# From https://nilearn.github.io/auto_examples/01_plotting/plot_visualization.html#sphx-glr-auto-examples-01-plotting-plot-visualization-py.
-# Are apply_mask and masker.fit_transform the same?
-#masked_data = apply_mask(curr_condition_img, mask_image)
-# Look at the length of the array; does it match the number of voxels for that participant's functional mask?
-# len(masked_data[0]) # So far, yes, this does seem correct.
-# len(curr_condition_z[0])
-# It is a 2D array because this function applies the mask for each time point, but there is only one timepoint, so just index the 'first' (0th) array.
