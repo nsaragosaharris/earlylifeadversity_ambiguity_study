@@ -1,5 +1,13 @@
 # earlylifeadversity_ambiguity_study
-Study examining how early life adversity (ELA) relates to neurobehavioral responses to ambiguity and threat.
+
+This repository contains the code (task and analysis) for a study examining how early life adversity (ELA) relates to neurobehavioral responses to ambiguity and threat.
+
+*Corresponding paper.*
+
+**Title: Early life adversity is associated with greater similarity in neural representations of ambiguous and threatening stimuli.**
+
+**Authors: Natalie Saragosa-Harris, João F. Guassi Moreira, Yael H. Waizman, Anna Sedykin, Tara S. Peris+, and Jennifer A. Silvers+.
++Equal author contribution.**
 
 
 The representational similarity analysis script (nilearnscript_conditionlevel) uses nilearn, a Python package (https://nilearn.github.io/stable/index.html).
