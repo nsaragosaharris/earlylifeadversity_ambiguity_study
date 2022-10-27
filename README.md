@@ -10,7 +10,7 @@ This repository contains the code (task and analysis) for a study examining how 
 +Equal author contribution.**
 
 *Task.*
-The stimuli for the fMRI task and post-scan behavioral task (code is located in scripts/task) are from the Racially Diverse Affective Expression (RADIATE) face stimulus set (https://www.sciencedirect.com/science/article/pii/S0165178117321893), an open access dataset available in the supplemental materials for the study. 
+The stimuli for the fMRI task and post-scan behavioral task (code is located in scripts/task) are from the Racially Diverse Affective Expression (RADIATE) face stimulus set, an open access dataset. The stimuli are not included here but are included in the supplemental materials in the original study from the creators of the stimulus set (https://www.sciencedirect.com/science/article/pii/S0165178117321893).
 
 *Representational similairty analysis.*
 The representational similarity analysis script (in scripts/rsa_scripts) is written in Python 3 and uses nilearn (https://nilearn.github.io/stable/index.html), a Python library.
