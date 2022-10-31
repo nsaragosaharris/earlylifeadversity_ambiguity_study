@@ -1,0 +1,1885 @@
+---
+title: "Supplemental Tables: Neural representations of ambiguity and threat following early life adversity"
+author: "Natalie Saragosa-Harris"
+date: "August 2022"
+output:
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+```{r settings, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r read_data, include=FALSE}
+
+library(plyr)
+library(readr)
+library(psych)
+library(dplyr)
+library(glue)
+library(ggplot2)
+library(lme4)
+library(lmerTest)
+library(sjPlot) #https://cran.r-project.org/web/packages/sjPlot/vignettes/tab_model_estimates.html
+library(sjmisc)
+library(sjlabelled)
+library(stargazer) #https://zief0002.github.io/book-8252/pretty-printing-tables-in-markdown.html
+library(reshape2)
+library(vtable) # for summary tables (descriptive statistics).
+library(gtsummary) # also for summary tables.
+library(patchwork)
+library(ggeffects)
+library(reghelper) # for simple slopes.
+library(qwraps2)
+options(qwraps2_markup = "markdown")
+options(scipen=1, digits=2)
+
+datadirectory <- ''  # Add directory where data are saved here.
+data <- read.csv(glue('{datadirectory}behavior_rsa_conditionlevel_shortdata.csv'),stringsAsFactors = TRUE) # Read in data.
+long_behavioral_data <- read.csv(glue('{datadirectory}behavioral/BehavioralFacesTask_LongData.csv'),stringsAsFactors = TRUE)
+demographics <- read.csv(glue('{datadirectory}behavioral/BehavioralFacesTask_LongData.csv'),stringsAsFactors = TRUE)
+
+# Add z scores to the data.
+data$CTQ_Total_z <- as.numeric(scale(data$CTQ_Total,center=TRUE))
+data$CTQ_log <- as.numeric(log(data$CTQ_Total)) # Note: in R, log function defaults to natural log.
+data$CTQ_log_z <- as.numeric(scale(data$CTQ_log,center=TRUE))
+data$HONOS_total_z <- scale(data$HONOS_total, center = TRUE)[,]
+data$angry_rt_average_z <- scale(data$angry_rt_average, center = TRUE)[,]
+data$surprised_rt_average_z <- scale(data$surprised_rt_average, center = TRUE)[,]
+data$happy_rt_average_z <- scale(data$happy_rt_average, center = TRUE)[,]
+data$rt_difference_all_positive_vs_negative_z <- scale(data$rt_difference_all_positive_vs_negative, center = TRUE)[,]
+data$rt_difference_positive_vs_negative_surprised_z <- scale(data$rt_difference_positive_vs_negative_surprised, center = TRUE)[,]
+data$rt_difference_surprised_vs_angry_z <- scale(data$rt_difference_surprised_vs_angry, center = TRUE)[,]
+data$rt_difference_surprised_vs_happy_z <- scale(data$rt_difference_surprised_vs_happy, center = TRUE)[,]
+data$rt_difference_surprised_vs_unambiguous_z <- scale(data$rt_difference_surprised_vs_unambiguous, center = TRUE)[,]
+data$surprised_negative_rating_rt_average_z <- scale(data$surprised_negative_rating_rt_average, center = TRUE)[,]
+data$surprised_positive_rating_rt_average_z <- scale(data$surprised_positive_rating_rt_average, center = TRUE)[,]
+data$all_negative_rating_rt_average_z <- scale(data$all_negative_rating_rt_average, center = TRUE)[,]
+data$all_positive_rating_rt_average_z <- scale(data$all_positive_rating_rt_average, center = TRUE)[,]
+
+# Behavioral trial level data: Edit response so that a positive rating = 0 and a negative rating = 1.
+long_behavioral_data <- long_behavioral_data %>%
+  mutate(response = case_when(P_N_response =="P" ~ 0,
+                              P_N_response =="N" ~ 1))
+# Only keep trials in which there is a response.
+long_behavioral_data <- long_behavioral_data[complete.cases(long_behavioral_data$response),]
+surprised_trials <- subset(long_behavioral_data, TrialType == "surprised")
+
+```
+
+# Sample information.
+## *Demographics and questionnaire data.*
+### Table S1: Sample demographics and summary statistics for questionnaire data.
+```{r sample_information,include=FALSE, warning = FALSE}
+
+summary_data <- data %>% select(Age_T1, Sex, race_combined,Hispanic, Percent_Surprised_Negative, CTQ_Total,HONOS_total)
+
+summary_data <- summary_data %>% rename(c(Age = Age_T1,
+                                          Race = race_combined))
+
+```
+
+```{r sample_information_table,echo=FALSE, warning = FALSE}
+
+summary_data %>% tbl_summary(label = c(Percent_Surprised_Negative ~ "Negativity bias (percent ambiguous trials categorized negatively)",
+                                       CTQ_Total ~ "CTQ Score",
+                                       HONOS_total ~ "HoNOS Score"),
+                             missing_text = "(Missing)")  %>%
+                             modify_header(label ~ "**Variable**") %>%
+                             bold_labels()
+
+```
+
+# ELA, global functioning, and task behavior.
+## *ELA and global functioning.*
+### Table S2: Does ELA relate to global functioning?
+
+```{r ctq_honos,include=FALSE}
+ctq_honos <- lm(HONOS_total_z ~ CTQ_log_z, data = data)
+
+```
+
+```{r ctq_honos_table,echo=FALSE}
+#tab_model(ctq_honos,show.se = TRUE, show.std = TRUE, show.stat = TRUE) #https://strengejacke.github.io/sjPlot/articles/tab_model_estimates.html
+tab_model(ctq_honos,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"), # Not sure why but to get DF to show have to use "df.error" here.
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Global functioning impairment (HoNOS z-score)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error")) # Rename "statistic" in the table to be "t" since it is a t value specifically.
+
+```
+
+## *Task behavior.*
+```{r reactiontime_behavior,include=FALSE}
+
+# Does average time spent evaluating ambiguous images (regardless of rating) predict average ratings of the images?
+surprised_rt_percent_surprised_negative <- lm(Percent_Surprised_Negative_Z ~ surprised_rt_average_z, data = data)
+
+# Logistic regression.
+# Does reaction time predict ratings of ambiguous images?
+# Behavioral trial level data: positive rating = 0 and a negative rating = 1.
+rt_logistic_negativeratings <- glmer(response ~ P_N_response.rt +  (1 | Participant_ID),
+                              data = surprised_trials, 
+                              family = binomial(link="logit"))
+
+## odds ratios and 95% CI.
+exp(cbind(OR = fixef(rt_logistic_negativeratings), confint(rt_logistic_negativeratings)))
+# Note: This is the same result as the tab_model output.
+
+predicted <- ggpredict(rt_logistic_negativeratings, "P_N_response.rt[all]", type = "zi.prob")
+plot(predicted)
+
+```
+
+### Table S3: Does average reaction time to ambiguous images relate to negativity biases (the number of ambiguous faces interpreted negatively)?
+```{r reactiontime_behavior_table,echo=FALSE}
+tab_model(surprised_rt_percent_surprised_negative,
+         show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+         col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+         pred.labels = c("Intercept", "Average reaction time: ambiguous images (z-scored)"),
+         dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+         strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+### Table S4: Do trial-level reaction times to ambiguous images predict trial-level intepretations?
+```{r reactiontime_behavior_multilevel_table,echo=FALSE}
+# # Add transform = NULL if want to see log-odds rather than odds ratio.
+tab_model(rt_logistic_negativeratings,
+         show.stat = TRUE, show.se = TRUE,
+         pred.labels = c("Intercept", "Trial-specific reaction time"),
+         dv.labels = c("Likelihood negative rating"),
+         string.est = "OR",
+         string.se = "standard error",
+         string.ci = "95% CI",
+         string.stat = "z")
+
+```
+
+## *ELA and task behavior.*
+
+### Table S5: Does ELA relate to negativity biases (the number of ambiguous faces interpreted negatively)?
+```{r ctq_percent_surprised_negative,include=FALSE}
+
+ctq_percent_surprised_negative <- lm(Percent_Surprised_Negative_Z ~ CTQ_log_z, data = data)
+
+```
+
+```{r ctq_percent_surprised_negative_table,echo=FALSE}
+tab_model(ctq_percent_surprised_negative,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+### Table S6: Does ELA relate to average reaction time to ambiguous and non-ambiguous emotional stimuli (regardless of rating)?
+```{r ctq_reactiontime_bycondition,include=FALSE}
+## Models about the valence of the image. ##
+# Angry images.
+ctq_reactiontime_angry <- lm(angry_rt_average_z ~ CTQ_log_z, data = data)
+
+# Happy images.
+ctq_reactiontime_happy <- lm(happy_rt_average_z ~ CTQ_log_z, data = data)
+
+# Surprised images.
+ctq_reactiontime_surprised <- lm(surprised_rt_average_z ~ CTQ_log_z, data = data)
+
+```
+
+```{r ctq_reactiontime_bycondition_table,echo=FALSE}
+
+tab_model(ctq_reactiontime_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Average reaction time: threatening images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+tab_model(ctq_reactiontime_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Average reaction time: nonthreatening images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+tab_model(ctq_reactiontime_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Average reaction time: ambiguous images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+### Table S7: Does ELA relate to  differences in reaction time between ambiguous and non-ambiguous emotional stimuli (regardless of rating)?
+```{r ctq_reactiontime_differences,include=FALSE}
+# Differences in reaction time (where positive = longer time spent evaluating ambiguous images).
+
+ctq_reactiontime_difference_surprised_vs_angry <- lm(rt_difference_surprised_vs_angry_z ~ CTQ_log_z, data = data)
+
+ctq_reactiontime_difference_surprised_vs_happy <- lm(rt_difference_surprised_vs_happy_z ~ CTQ_log_z, data = data)
+```
+
+```{r ctq_reactiontime_differences_table,echo=FALSE}
+tab_model(ctq_reactiontime_difference_surprised_vs_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Average reaction time difference: ambiguous - threatening (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(ctq_reactiontime_difference_surprised_vs_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Average reaction time difference: ambiguous - nonthreatening (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+### Table S8: Does ELA relate to average time spent rating ambiguous images positively vs. negatively?
+
+```{r ctq_reactiontime_ratings,include=FALSE}
+## Models about the participant's rating of the image. ##
+
+# Does CTQ relate to how long it takes to rate ambiguous faces positively?
+ctq_reactiontime_positiverating_surprised <- lm(surprised_positive_rating_rt_average_z ~ CTQ_log_z, data = data)
+
+# Does CTQ relate to how long it takes to rate ambiguous faces negatively?
+ctq_reactiontime_negativerating_surprised <- lm(surprised_negative_rating_rt_average_z ~ CTQ_log_z, data = data)
+
+# Does CTQ relate to the difference in how long it takes to rate ambiguous faces positively vs. negatively?
+# Difference in reaction time (where positive = longer time spent to rate surprised image as positive).
+ctq_reactiontime_positive_vs_negative_rating_surprised <- lm(rt_difference_positive_vs_negative_surprised_z ~ CTQ_log_z, data = data)
+
+```
+
+```{r ctq_reactiontime_ratings_table,echo=FALSE}
+tab_model(ctq_reactiontime_positiverating_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Average reaction time: positive ratings of ambiguous images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(ctq_reactiontime_negativerating_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Average reaction time: negative ratings of ambiguous images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+# Difference in reaction time (where positive = longer time spent to rate surprised image as positive).
+tab_model(ctq_reactiontime_positive_vs_negative_rating_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Average reaction time difference: positive - negative ratings of ambiguous images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+## *Global functioning and task behavior.*
+
+### Table S9: Does global functioning relate to negativity biases (the number of ambiguous faces interpreted negatively)?
+```{r honos_percent_surprised_negative,include=FALSE}
+honos_percent_surprised_negative <- lm(Percent_Surprised_Negative_Z ~ HONOS_total_z, data = data)
+
+honos_percent_surprised_negative_controlctq <- lm(Percent_Surprised_Negative_Z ~ HONOS_total_z + CTQ_log_z, data = data)
+
+```
+
+```{r honos_percent_surprised_negative_table,echo=FALSE}
+tab_model(honos_percent_surprised_negative,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(honos_percent_surprised_negative_controlctq,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # Lower bound of conidence interval is very small (0.0003) so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)","ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+### Table S10: Does global functioning relate to average reaction time to ambiguous and non-ambiguous emotional stimuli (regardless of rating)?
+```{r honos_reactiontime_bycondition,include=FALSE}
+## Models about the valence of the image. ##
+
+# Angry images.
+honos_reactiontime_angry <- lm(angry_rt_average_z ~ HONOS_total_z, data = data)
+
+# Happy images.
+honos_reactiontime_happy <- lm(happy_rt_average_z ~ HONOS_total_z, data = data)
+
+# Surprised images.
+honos_reactiontime_surprised <- lm(surprised_rt_average_z ~ HONOS_total_z, data = data)
+
+```
+
+```{r honos_reactiontime_bycondition_table,echo=FALSE}
+
+tab_model(honos_reactiontime_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Average reaction time: threatening images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(honos_reactiontime_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Average reaction time: nonthreatening images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(honos_reactiontime_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Average reaction time: ambiguous images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+### Table S11: Does global functioning relate to  differences in reaction time between ambiguous and non-ambiguous emotional stimuli (regardless of rating)?
+```{r honos_reactiontime_differences,include=FALSE}
+honos_reactiontime_difference_surprised_vs_unambiguous <- lm(rt_difference_surprised_vs_unambiguous_z ~ HONOS_total_z, data = data)
+
+honos_reactiontime_difference_surprised_vs_angry <- lm(rt_difference_surprised_vs_angry_z ~ HONOS_total_z, data = data)
+
+honos_reactiontime_difference_surprised_vs_happy <- lm(rt_difference_surprised_vs_happy_z ~ HONOS_total_z, data = data)
+
+```
+
+```{r honos_reactiontime_differences_table,echo=FALSE}
+tab_model(honos_reactiontime_difference_surprised_vs_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Average reaction time difference: ambiguous - threatening (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(honos_reactiontime_difference_surprised_vs_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Average reaction time difference: ambiguous - nonthreatening (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+### Table S12: Does global functioning relate to average time spent rating ambiguous images positively vs. negatively?
+```{r honos_reactiontime_ratings,include=FALSE}
+
+## Models about the participant's rating of the image. ##
+
+# Does honos relate to how long it takes to rate (any) face positively?
+honos_reactiontime_positiverating <- lm(all_positive_rating_rt_average_z ~ HONOS_total_z, data = data)
+
+# Does honos relate to how long it takes to rate (any) face negatively?
+honos_reactiontime_negativerating <- lm(all_negative_rating_rt_average_z ~ HONOS_total_z, data = data)
+
+# Does honos relate to difference in reaction time for positive vs. negative ratings?
+# Difference in reaction time (where positive = longer time spent to rate any image as positive).
+honos_reactiontime_positive_vs_negative_rating <- lm(rt_difference_all_positive_vs_negative_z ~ HONOS_total_z, data = data)
+
+# Surprised images that are rated positively.
+# Does honos relate to how long it takes to rate ambiguous faces positively?
+honos_reactiontime_positiverating_surprised <- lm(surprised_positive_rating_rt_average_z ~ HONOS_total_z, data = data)
+
+# Does honos relate to how long it takes to rate ambiguous faces negatively?
+honos_reactiontime_negativerating_surprised <- lm(surprised_negative_rating_rt_average_z ~ HONOS_total_z, data = data)
+
+# Does honos relate to the difference in how long it takes to rate ambiguous faces positively vs. negatively?
+# Difference in reaction time (where positive = longer time spent to rate surprised image as positive).
+honos_reactiontime_positive_vs_negative_rating_surprised <- lm(rt_difference_positive_vs_negative_surprised_z ~ HONOS_total_z, data = data)
+```
+
+```{r honos_reactiontime_ratings_table,echo=FALSE}
+
+tab_model(honos_reactiontime_positiverating_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Average reaction time: positive ratings of ambiguous images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+tab_model(honos_reactiontime_negativerating_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Average reaction time: negative ratings of ambiguous images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+# Difference in reaction time (where positive = longer time spent to rate surprised image as positive).
+tab_model(honos_reactiontime_positive_vs_negative_rating_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Average reaction time difference: positive - negative ratings of ambiguous images (z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+## *Interaction: ELA, global functioning, and task behavior.*
+
+```{r ctq_honos_behavior,include=FALSE}
+# Do CTQ scores and negativity biases interact to relate to HoNOS scores?
+honos_ctq_percentnegative_surprised <- lm(HONOS_total_z ~ CTQ_log_z*Percent_Surprised_Negative_Z, data = data)
+
+```
+### Table S13: Do ELA and negativity biases interact to predict global functioning?
+```{r ctq_honos_behavior_table,echo=FALSE}
+
+tab_model(honos_ctq_percentnegative_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept",
+                          "ELA (log CTQ score, z-scored)",
+                          "Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)",
+                          "ELA x negativity bias"),
+          dv.labels = c("Global functioning impairment (HoNOS z-score)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+```{r ctq_honos_reactiontime,include=FALSE}
+
+# Do CTQ scores and behavioral signatures of ambiguity tolerance (here, time spent evaluating surprised images, 
+# regardless of how they categorized them, vs. time spent evaluating angry and happy images) interact to predict HoNOS scores?
+
+# Note: Do not z score these because the unstandardized 0 point is meaningful.
+honos_ctq_reactiontime_surprised_vs_unambiguous <- lm(HONOS_total_z ~ CTQ_log_z*rt_difference_surprised_vs_unambiguous, data = data)
+
+honos_ctq_reactiontime_surprised_vs_angry <- lm(HONOS_total_z ~ CTQ_log_z*rt_difference_surprised_vs_angry, data = data)
+
+simple_slopes(honos_ctq_reactiontime_surprised_vs_angry,
+    levels=list(CTQ_log_z=c(-1.5,1.5, 'sstest')))
+# For 1.5 (high ELA): beta = 4.36, t = 0.99, p = 0.33.
+# For -1.5 (low ELA): beta = -13.28; t = -2.8641; p = 0.007.
+
+honos_ctq_reactiontime_surprised_vs_happy <- lm(HONOS_total_z ~ CTQ_log_z*rt_difference_surprised_vs_happy, data = data)
+
+simple_slopes(honos_ctq_reactiontime_surprised_vs_happy,
+    levels=list(CTQ_log_z=c(-1.5,1.5, 'sstest')))
+# For 1.5 (high ELA): beta = 7.58, t = 1.38, p = 0.18.
+# For -1.5 (low ELA): beta = -13.01; t = -2.78; p = 0.009.
+
+# Models about the participant’s rating of the image.
+# Do CTQ scores and time spent categorizing surprised images as positive interact to predict HoNOS scores?
+honos_ctq_reactiontime_surprised_positive_rating <- lm(HONOS_total_z ~ CTQ_log_z*surprised_positive_rating_rt_average, data = data)
+
+```
+
+### Table S14: Do ELA and average time spent evaluating ambiguous images (vs. non-ambiguous images) interact to predict global functioning?
+```{r ctq_honos_reactiontime_table,echo=FALSE}
+# Note: Did not z score difference scores because the unstandardized 0 point is meaningful.
+tab_model(honos_ctq_reactiontime_surprised_vs_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept",
+                          "ELA (log CTQ score, z-scored)",
+                          "Average reaction time difference: ambiguous - threatening (s)",
+                          "ELA x reaction time difference"),
+          dv.labels = c("Global functioning impairment (HoNOS z-score)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(honos_ctq_reactiontime_surprised_vs_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept",
+                          "ELA (log CTQ score, z-scored)",
+                          "Average reaction time difference:  ambiguous - nonthreatening (s)",
+                          "ELA x reaction time difference"),
+          dv.labels = c("Global functioning impairment (HoNOS z-score)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+
+# ELA and representational overlap.
+## *Descriptive statistics.*
+### Table S15: Average RSA values within each region.
+```{r summary_rsa_values,include=FALSE,results = "asis"}
+# Descriptive statistics: Average and standard deviations of RSA values for each region).
+# First, create new data frame that is long format.
+
+longdata <- data[,grepl(glob2rx('Participant_ID|*average_*fisher_z'), names(data))] # Only keep these columns for the descriptive statistics table.
+longdata <- melt(longdata,id.vars = 'Participant_ID', value.name = 'fisher_z')
+
+longdata <- longdata %>%
+                       mutate(region = 
+                                case_when(grepl("_amy_",longdata$variable) ~ "amygdala",
+                                          grepl("_accumbens_",longdata$variable) ~ "accumbens",
+                                          grepl("_anteriorinsula_",longdata$variable) ~ "anteriorinsula",
+                                          grepl("_vmpfc_",longdata$variable) ~ "vmpfc",
+                                          grepl("_V1_",longdata$variable) ~ "V1"),
+                              hemisphere =
+                                case_when(grepl("_R_",longdata$variable) ~ "right",
+                                          grepl("_L_",longdata$variable) ~ "left"),
+                              comparison = 
+                                case_when(grepl("AO_HO",longdata$variable) ~ "angry_happy",
+                                          grepl("AO_SUR",longdata$variable) ~ "angry_surprised",
+                                          grepl("HO_SUR",longdata$variable) ~ "happy_surprised"))
+longdata$regionname <- paste(longdata$hemisphere,"_",longdata$region,sep="")
+factor_columns <- names(longdata)[!(names(longdata) %in% 'fisher_z')] # Make every column except fisher_z column a factor.
+longdata[,factor_columns] <- lapply(longdata[,factor_columns], as.factor)
+
+
+longdata_byregion <- reshape(longdata, idvar = c("Participant_ID","comparison"), v.names = "fisher_z",timevar = "regionname", direction = "wide")
+
+summary2 <-
+  list("Right Amygdala" =
+       list("min"       = ~ round(min(fisher_z.right_amygdala),digits = 2),
+            "max"       = ~ round(max(fisher_z.right_amygdala),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.right_amygdala)),
+       "Left Amygdala" =
+       list("min"       = ~ round(min(fisher_z.left_amygdala),digits = 2),
+            "max"       = ~ round(max(fisher_z.left_amygdala),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.left_amygdala)),
+       "Right Accumbens" =
+       list("min"       = ~ round(min(fisher_z.right_accumbens),digits = 2),
+            "max"       = ~ round(max(fisher_z.right_accumbens),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.right_accumbens)),
+       "Left Accumbens" =
+       list("min"       = ~ round(min(fisher_z.left_accumbens),digits = 2),
+            "max"       = ~ round(max(fisher_z.left_accumbens),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.left_accumbens)),
+       "Right Anterior Insula" =
+       list("min"       = ~ round(min(fisher_z.right_anteriorinsula),digits = 2),
+            "max"       = ~ round(max(fisher_z.right_anteriorinsula),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.right_anteriorinsula)),
+       "Left Anterior Insula" =
+       list("min"       = ~ round(min(fisher_z.left_anteriorinsula),digits = 2),
+            "max"       = ~ round(max(fisher_z.left_anteriorinsula),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.left_anteriorinsula)),
+       "Right vmPFC" =
+       list("min"       = ~ round(min(fisher_z.right_vmpfc),digits = 2),
+            "max"       = ~ round(max(fisher_z.right_vmpfc),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.right_vmpfc)),
+       "Left vmPFC" =
+       list("min"       = ~ round(min(fisher_z.left_vmpfc),digits = 2),
+            "max"       = ~ round(max(fisher_z.left_vmpfc),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.left_vmpfc)),
+       "Right V1" =
+       list("min"       = ~ round(min(fisher_z.right_V1),digits = 2),
+            "max"       = ~ round(max(fisher_z.right_V1),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.right_V1)),
+       "Left V1" =
+       list("min"       = ~ round(min(fisher_z.left_V1),digits = 2),
+            "max"       = ~ round(max(fisher_z.left_V1),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(fisher_z.left_V1)))
+
+```
+
+```{r summary_rsa_table,echo=FALSE,results = "asis"}
+summary_table(longdata_byregion, summaries = summary2, by = c("comparison"))
+```
+
+## *Ambiguous/threatening overlap.*
+```{r ctq_rsa_amygdala,include=FALSE}
+
+## Right amygdala. ##
+ 
+# Angry/surprised.
+right_amygdala_log_z_ctq_angrysurprised <- lm(AO_SUR_average_amy_R_Thr50_fisher_z ~ CTQ_log_z, data = data)
+
+# Does effect remain when control for number of voxels?
+right_amygdala_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_amy_R_Thr50_fisher_z ~ CTQ_log_z + number_voxels_amy_R_Thr50_average, data = data)
+
+# Happy/surprised.
+right_amygdala_log_z_ctq_happysurprised <- lm(HO_SUR_average_amy_R_Thr50_fisher_z ~ CTQ_log_z, data = data)
+
+# Does effect remain after controlling for the number of voxels within the region?
+right_amygdala_log_z_ctq_happysurprised_controlvoxels <- lm(HO_SUR_average_amy_R_Thr50_fisher_z ~ CTQ_log_z + number_voxels_amy_R_Thr50_average, data = data)
+
+# Angry/happy.
+right_amygdala_log_z_ctq_angryhappy <- lm(AO_HO_average_amy_R_Thr50_fisher_z ~ CTQ_log_z, data = data)
+
+## Left amygdala. ##
+
+# Angry/Surprised.
+left_amygdala_log_z_ctq_angrysurprised <- lm(AO_SUR_average_amy_L_Thr50_fisher_z ~ CTQ_log_z, data = data)
+
+# Does effect remain after controlling for the number of voxels within the region?
+left_amygdala_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_amy_L_Thr50_fisher_z  ~ CTQ_log_z + number_voxels_amy_L_Thr50_average, data = data)
+
+# Happy/surprised.
+left_amygdala_log_z_ctq_happysurprised<- lm(HO_SUR_average_amy_L_Thr50_fisher_z  ~ CTQ_log_z, data = data)
+
+# Angry/happy.
+left_amygdala_log_z_ctq_angryhappy <- lm(AO_HO_average_amy_L_Thr50_fisher_z  ~ CTQ_log_z, data = data)
+
+```
+
+```{r ctq_rsa_accumbens,include=FALSE}
+
+## Right accumbens. ##
+# Angry/surprised.
+right_accumbens_log_z_ctq_angrysurprised <- lm(AO_SUR_average_accumbens_R_Thr25_fisher_z ~ CTQ_log_z, data = data)
+
+# Does effect remain after controlling for the number of voxels within the region?
+right_accumbens_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_accumbens_R_Thr25_fisher_z  ~ CTQ_log_z + number_voxels_accumbens_R_Thr25_average, data = data)
+
+# Happy/surprised.
+right_accumbens_log_z_ctq_happysurprised <- lm(HO_SUR_average_accumbens_R_Thr25_fisher_z ~ CTQ_log_z, data = data)
+
+# Angry/happy.
+right_accumbens_log_z_ctq_angryhappy <- lm(AO_HO_average_accumbens_R_Thr25_fisher_z ~ CTQ_log_z, data = data)
+
+## Left accumbens. ##
+
+# Angry/surprised.
+left_accumbens_log_z_ctq_angrysurprised <- lm(AO_SUR_average_accumbens_L_Thr25_fisher_z ~ CTQ_log_z, data = data)
+summary(left_accumbens_log_z_ctq_angrysurprised)
+
+# Does effect remain after controlling for the number of voxels within the region?
+left_accumbens_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_accumbens_L_Thr25_fisher_z  ~ CTQ_log_z + number_voxels_accumbens_L_Thr25_average, data = data)
+
+# Happy/surprised.
+left_accumbens_log_z_ctq_happysurprised <- lm(HO_SUR_average_accumbens_L_Thr25_fisher_z ~ CTQ_log_z, data = data)
+
+# Angry/happy.
+left_accumbens_log_z_ctq_angryhappy <- lm(AO_HO_average_accumbens_L_Thr25_fisher_z ~ CTQ_log_z, data = data)
+
+```
+
+```{r ctq_rsa_anteriorinsula,include=FALSE}
+
+## Right anterior insula. ##
+
+# Angry/surprised.
+right_anteriorinsula_log_z_ctq_angrysurprised <- lm(AO_SUR_average_anteriorinsula_R_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+# Does effect remain after controlling for the number of voxels within the region?
+right_anteriorinsula_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_anteriorinsula_R_xu2021_fisher_z  ~ CTQ_log_z + number_voxels_anteriorinsula_R_xu2021_average, data = data)
+
+# Happy/surprised.
+right_anteriorinsula_log_z_ctq_happysurprised <- lm(HO_SUR_average_anteriorinsula_R_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+# Angry/happy.
+right_anteriorinsula_log_z_ctq_angryhappy <- lm(AO_HO_average_anteriorinsula_R_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+# Does effect remain after controlling for the number of voxels within the region?
+right_anteriorinsula_log_z_ctq_angryhappy_controlvoxels <- lm(AO_HO_average_anteriorinsula_R_xu2021_fisher_z  ~ CTQ_log_z + number_voxels_anteriorinsula_R_xu2021_average, data = data)
+
+
+## Left anterior insula. ##
+
+# Angry/surprised.
+left_anteriorinsula_log_z_ctq_angrysurprised <- lm(AO_SUR_average_anteriorinsula_L_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+# Does effect remain after controlling for the number of voxels within the region?
+left_anteriorinsula_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_anteriorinsula_L_xu2021_fisher_z  ~ CTQ_log_z + number_voxels_anteriorinsula_L_xu2021_average, data = data)
+
+# Happy/surprised.
+left_anteriorinsula_log_z_ctq_happysurprised <- lm(HO_SUR_average_anteriorinsula_L_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+# Angry/happy.
+left_anteriorinsula_log_z_ctq_angryhappy <- lm(AO_HO_average_anteriorinsula_L_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+```
+
+```{r ctq_rsa_vmpfc,include=FALSE}
+
+## Right vmPFC. ##
+
+# Angry/surprised.
+right_vmpfc_log_z_ctq_angrysurprised <- lm(AO_SUR_average_vmpfc_R_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+# Does effect remain after controlling for the number of voxels within the region?
+right_vmpfc_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_vmpfc_R_xu2021_fisher_z  ~ CTQ_log_z + number_voxels_vmpfc_R_xu2021_average, data = data)
+
+# Happy/surprised.
+right_vmpfc_log_z_ctq_happysurprised <- lm(HO_SUR_average_vmpfc_R_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+# Angry/happy.
+right_vmpfc_log_z_ctq_angryhappy <- lm(AO_HO_average_vmpfc_R_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+## Left vmPFC. ##
+
+# Angry/surprised.
+left_vmpfc_log_z_ctq_angrysurprised <- lm(AO_SUR_average_vmpfc_L_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+# Does effect remain after controlling for the number of voxels within the region?
+left_vmpfc_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_vmpfc_L_xu2021_fisher_z  ~ CTQ_log_z + number_voxels_vmpfc_L_xu2021_average, data = data)
+
+
+# Happy/surprised.
+left_vmpfc_log_z_ctq_happysurprised <- lm(HO_SUR_average_vmpfc_L_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+# Angry/happy.
+left_vmpfc_log_z_ctq_angryhappy <- lm(AO_HO_average_vmpfc_L_xu2021_fisher_z ~ CTQ_log_z, data = data)
+
+```
+
+```{r ctq_rsa_v1,include=FALSE}
+
+## Right V1. ##
+
+# Angry/surprised.
+right_V1_log_z_ctq_angrysurprised <- lm(AO_SUR_average_V1_R_Thr75_fisher_z ~ CTQ_log_z, data = data)
+
+# Control voxels; just for consistency with other models and for the table.
+right_V1_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_V1_R_Thr75_fisher_z  ~ CTQ_log_z + number_voxels_V1_R_Thr75_average, data = data)
+
+
+# Happy/surprised.
+right_V1_log_z_ctq_happysurprised <- lm(HO_SUR_average_V1_R_Thr75_fisher_z ~ CTQ_log_z, data = data)
+
+
+# Angry/happy.
+right_V1_log_z_ctq_angryhappy <- lm(AO_HO_average_V1_R_Thr75_fisher_z ~ CTQ_log_z, data = data)
+
+## Left V1. ##
+
+# Angry/surprised.
+left_V1_log_z_ctq_angrysurprised <- lm(AO_SUR_average_V1_L_Thr75_fisher_z ~ CTQ_log_z, data = data)
+
+
+# Control voxels; just for consistency with other models and for the table.
+left_V1_log_z_ctq_angrysurprised_controlvoxels <- lm(AO_SUR_average_V1_L_Thr75_fisher_z  ~ CTQ_log_z + number_voxels_V1_L_Thr75_average, data = data)
+
+# Happy/surprised.
+left_V1_log_z_ctq_happysurprised <- lm(HO_SUR_average_V1_L_Thr75_fisher_z ~ CTQ_log_z, data = data)
+
+# Angry/happy.
+left_V1_log_z_ctq_angryhappy <- lm(AO_HO_average_V1_L_Thr75_fisher_z ~ CTQ_log_z, data = data)
+
+```
+
+### Table S16: Ambiguous/threatening overlap.
+```{r ctq_rsa_table_ambiguousthreatening,echo=FALSE}
+
+tab_model(right_amygdala_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_amygdala_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_accumbens_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_accumbens_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score) : Left nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_anteriorinsula_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_vmpfc_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score) Left vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_V1_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_log_z_ctq_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score) Left V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+### Table S17: Do observed associations with ambiguous/threatening overlap hold when we control for participant-specific ROI size?
+```{r ctq_rsa_controlvoxels_table_ambiguousthreatening,echo=FALSE}
+
+tab_model(right_amygdala_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 5, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Right amygdala size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_amygdala_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Left amygdala size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_accumbens_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Right nucleus accumbens size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_accumbens_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Left nucleus accumbens size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_anteriorinsula_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Right anterior insula size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Left anterior insula size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_vmpfc_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Right vmPFC size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Left vmPFC size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_V1_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Right V1 size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_log_z_ctq_angrysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Left V1 size"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+## *Ambiguous/nonthreatening overlap.*
+### Table S18: ELA and ambiguous/nonthreatening overlap.
+```{r ctq_rsa_table_ambiguousnonthreatening,echo=FALSE}
+
+tab_model(right_amygdala_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score): Right amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_amygdala_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score): Left amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_accumbens_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score): Right nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_accumbens_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score) : Left nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_anteriorinsula_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score): Right anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score): Left anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_vmpfc_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score): Right vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score) Left vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_V1_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score): Right V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_log_z_ctq_happysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score) Left V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+### Table S19: Does observed association with ambiguous/nonthreatening overlap hold when we control for participant-specific ROI size?
+```{r ctq_rsa_controlvoxels_table_ambiguousnonthreatening,echo=FALSE}
+tab_model(right_amygdala_log_z_ctq_happysurprised_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          #digits = 5, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Right amygdala size"),
+          dv.labels = c("Ambiguous/nonthreatening overlap (Fisher z score): Right amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+## *Threatening/nonthreatening overlap.*
+### Table S20: ELA and threatening/nonthreatening overlap.
+```{r ctq_rsa_table_threateningnonthreatening,echo=FALSE}
+
+tab_model(right_amygdala_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score): Right amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_amygdala_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score): Left amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_accumbens_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score): Right nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_accumbens_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score) : Left nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_anteriorinsula_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score): Right anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score): Left anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_vmpfc_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score): Right vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score) Left vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_V1_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score): Right V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_log_z_ctq_angryhappy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3, # It is very small so was saying zero when using default of two decimal points.
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score) Left V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+### Table S21: Does observed association with threatening/nonthreatening overlap hold when we control for participant-specific ROI size?
+```{r ctq_rsa_controlvoxels_table_threateningnonthreatening,echo=FALSE}
+
+tab_model(right_anteriorinsula_log_z_ctq_angryhappy_controlvoxels,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)", "Right anterior insula size"),
+          dv.labels = c("Threatening/nonthreatening overlap (Fisher z score): Right anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+```
+
+# Global functioning and representational overlap.
+### Table S22: Does ambiguous/threatening overlap relate to global functioning?
+```{r honos_rsa,include=FALSE}
+# Note: angry/surprised only.
+
+## Right amygdala. ##
+
+# Angry/surprised.
+right_amygdala_honos_angrysurprised <- lm(AO_SUR_average_amy_R_Thr50_fisher_z ~ HONOS_total_z, data = data)
+
+
+## Left amygdala. ##
+
+# Angry/surprised.
+left_amygdala_honos_angrysurprised <- lm(AO_SUR_average_amy_L_Thr50_fisher_z ~ HONOS_total_z, data = data)
+
+
+## Right accumbens. ##
+
+# Angry/surprised.
+right_accumbens_honos_angrysurprised <- lm(AO_SUR_average_accumbens_R_Thr25_fisher_z ~ HONOS_total_z, data = data)
+
+
+### Left accumbens. ##
+
+# Angry/surprised.
+left_accumbens_honos_angrysurprised <- lm(AO_SUR_average_accumbens_L_Thr25_fisher_z ~ HONOS_total_z, data = data)
+
+## Right anterior insula. ##
+
+# Angry/surprised.
+right_anteriorinsula_honos_angrysurprised <- lm(AO_SUR_average_anteriorinsula_R_xu2021_fisher_z ~ HONOS_total_z, data = data)
+
+## Left anterior insula. ##
+
+# Angry/surprised.
+left_anteriorinsula_honos_angrysurprised <- lm(AO_SUR_average_anteriorinsula_L_xu2021_fisher_z ~ HONOS_total_z, data = data)
+
+## Right vmPFC. ##
+
+# Angry/surprised.
+right_vmpfc_honos_angrysurprised <- lm(AO_SUR_average_vmpfc_R_xu2021_fisher_z ~ HONOS_total_z, data = data)
+
+
+## Left vmPFC. ##
+
+# Angry/surprised.
+left_vmpfc_honos_angrysurprised <- lm(AO_SUR_average_vmpfc_L_xu2021_fisher_z ~ HONOS_total_z, data = data)
+
+
+## Right V1. ##
+
+# Angry/surprised.
+right_V1_honos_angrysurprised <- lm(AO_SUR_average_V1_R_Thr75_fisher_z ~ HONOS_total_z, data = data)
+
+## Left V1. ##
+
+# Angry/surprised.
+left_V1_honos_angrysurprised <- lm(AO_SUR_average_V1_L_Thr75_fisher_z ~ HONOS_total_z, data = data)
+
+```
+
+```{r honos_rsa_table,echo=FALSE}
+
+tab_model(right_amygdala_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_amygdala_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left amygdala"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_accumbens_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_accumbens_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left nucleus accumbens"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_anteriorinsula_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 4,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left anterior insula"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_vmpfc_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Right vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left vmPFC"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_V1_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept",  "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c( "Ambiguous/threatening overlap (Fisher z score): Right V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_honos_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Global functioning impairment (HoNOS z-score)"),
+          dv.labels = c("Ambiguous/threatening overlap (Fisher z score): Left V1"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+#  Representational overlap and task behavior.
+### Table S23: Does  ambiguous/threatening overlap relate to negativity biases (number of ambiguous faces interpreted negatively)?
+```{r rsa_behavior,include=FALSE}
+# Note: angry/surprised only.
+
+## Right amygdala. ##
+right_amygdala_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_amy_R_Thr50_fisher_z, data = data)
+
+## Left amygdala. ##
+left_amygdala_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_amy_L_Thr50_fisher_z, data = data)
+
+## Right accumbens. ##
+right_accumbens_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_accumbens_R_Thr25_fisher_z, data = data)
+
+## Left accumbens. ##
+left_accumbens_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_accumbens_L_Thr25_fisher_z, data = data)
+
+## Right anterior insula. ##
+right_anteriorinsula_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_anteriorinsula_R_xu2021_fisher_z, data = data)
+
+## Left anterior insula. ##
+left_anteriorinsula_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_anteriorinsula_L_xu2021_fisher_z, data = data)
+
+## Right vmPFC. ##
+right_vmpfc_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_vmpfc_R_xu2021_fisher_z, data = data)
+
+## Left vmPFC. ##
+left_vmpfc_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_vmpfc_L_xu2021_fisher_z, data = data)
+
+
+## Right V1. ##
+right_V1_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_V1_R_Thr75_fisher_z, data = data).
+
+## Left V1. ##
+left_V1_behavior_angrysurprised <- lm(Percent_Surprised_Negative_Z ~ AO_SUR_average_V1_L_Thr75_fisher_z, data = data)
+```
+
+```{r rsa_behavior_table,echo=FALSE}
+
+tab_model(right_amygdala_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Right amygdala"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_amygdala_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Left amygdala"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_accumbens_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Right nucleus accumbens"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_accumbens_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Left nucleus accumbens"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_anteriorinsula_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Right anterior insula"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Left anterior insula"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_vmpfc_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Right vmPFC"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Left vmPFC"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_V1_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Right V1"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_behavior_angrysurprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Ambiguous/threatening overlap (Fisher z score): Left V1"),
+          dv.labels = c("Negativity bias (percent of ambiguous faces interpreted negatively; z-scored)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+# Univariate neural responses.
+## *Descriptive statistics.*
+### Table S24: Average univariate values by condition within each region.
+```{r summary_univariate_values,include=FALSE,results = "asis"}
+# Descriptive statistics: Average and standard deviations of univariate values for each region.
+# First, create new data frame that is long format.
+
+longdata_univariate <- data[,grepl(glob2rx('Participant_ID|*univariate_*'), names(data))] # Only keep these columns for the descriptive statistics table.
+longdata_univariate <- melt(longdata_univariate,id.vars = 'Participant_ID', value.name = 'univariate_average')
+
+longdata_univariate <- longdata_univariate %>%
+                       mutate(region = 
+                                case_when(grepl("_amy_",longdata_univariate$variable) ~ "amygdala",
+                                          grepl("_accumbens_",longdata_univariate$variable) ~ "accumbens",
+                                          grepl("_anteriorinsula_",longdata_univariate$variable) ~ "anteriorinsula",
+                                          grepl("_vmpfc_",longdata_univariate$variable) ~ "vmpfc",
+                                          grepl("_V1_",longdata_univariate$variable) ~ "V1"),
+                              hemisphere =
+                                case_when(grepl("_R_",longdata_univariate$variable) ~ "right",
+                                          grepl("_L_",longdata_univariate$variable) ~ "left"),
+                              emotion = 
+                                case_when(grepl("angry",longdata_univariate$variable) ~ "threatening",
+                                          grepl("happy",longdata_univariate$variable) ~ "nonthreatening",
+                                          grepl("surprised",longdata_univariate$variable) ~ "ambiguous"))
+
+longdata_univariate$regionname <- paste(longdata_univariate$hemisphere,"_",longdata_univariate$region,sep="")
+
+factor_columns <- names(longdata_univariate)[!(names(longdata_univariate) %in% 'univariate_average')] # Make every column except univariate_average column a factor.
+longdata_univariate[,factor_columns] <- lapply(longdata_univariate[,factor_columns], as.factor)
+
+longdata_univariate_byregion <- reshape(longdata_univariate, idvar = c("Participant_ID","emotion"), v.names = "univariate_average",timevar = "regionname", direction = "wide")
+
+longdata_univariate_byregion <- longdata_univariate_byregion %>% select(-c(variable, region,hemisphere))
+
+
+summary2 <-
+  list("Right Amygdala" =
+       list("min"       = ~ round(min(univariate_average.right_amygdala),digits = 2),
+            "max"       = ~ round(max(univariate_average.right_amygdala),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.right_amygdala)),
+       "Left Amygdala" =
+       list("min"       = ~ round(min(univariate_average.left_amygdala),digits = 2),
+            "max"       = ~ round(max(univariate_average.left_amygdala),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.left_amygdala)),
+       "Right Accumbens" =
+       list("min"       = ~ round(min(univariate_average.right_accumbens),digits = 2),
+            "max"       = ~ round(max(univariate_average.right_accumbens),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.right_accumbens)),
+       "Left Accumbens" =
+       list("min"       = ~ round(min(univariate_average.left_accumbens),digits = 2),
+            "max"       = ~ round(max(univariate_average.left_accumbens),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.left_accumbens)),
+       "Right Anterior Insula" =
+       list("min"       = ~ round(min(univariate_average.right_anteriorinsula),digits = 2),
+            "max"       = ~ round(max(univariate_average.right_anteriorinsula),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.right_anteriorinsula)),
+       "Left Anterior Insula" =
+       list("min"       = ~ round(min(univariate_average.left_anteriorinsula),digits = 2),
+            "max"       = ~ round(max(univariate_average.left_anteriorinsula),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.left_anteriorinsula)),
+       "Right vmPFC" =
+       list("min"       = ~ round(min(univariate_average.right_vmpfc),digits = 2),
+            "max"       = ~ round(max(univariate_average.right_vmpfc),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.right_vmpfc)),
+       "Left vmPFC" =
+       list("min"       = ~ round(min(univariate_average.left_vmpfc),digits = 2),
+            "max"       = ~ round(max(univariate_average.left_vmpfc),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.left_vmpfc)),
+       "Right V1" =
+       list("min"       = ~ round(min(univariate_average.right_V1),digits = 2),
+            "max"       = ~ round(max(univariate_average.right_V1),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.right_V1)),
+       "Left V1" =
+       list("min"       = ~ round(min(univariate_average.left_V1),digits = 2),
+            "max"       = ~ round(max(univariate_average.left_V1),digits = 2),
+            "mean (sd)" = ~ qwraps2::mean_sd(univariate_average.left_V1)))
+
+```
+
+```{r summary_univariate_table,echo=FALSE,results = "asis"}
+summary_table(longdata_univariate_byregion, summaries = summary2, by = c("emotion"))
+```
+
+## *Basic group-level contrasts by stimulus type within regions.*
+### Table S25: Group-level contrasts by stimulus type within regions.
+```{r univariate_contrasts_by_emotion_type,include=FALSE}
+# Create long form data.
+univariate_data <- data %>% select(Participant_ID,starts_with("univariate"))
+univariate_data_long <- melt(univariate_data,
+                                        id.vars = ("Participant_ID"),
+                                        variable.name = "region",
+                                        value.name = "univariate_response")
+
+# To get the region name, get the substring between "response" and "smoothed".
+univariate_data_long$region_name <- sub(".*response_", "", univariate_data_long$region)
+univariate_data_long$region_name <- as.factor(sub("_smoothed", "", univariate_data_long$region_name))
+
+# To get the emotion type,  keep only the substring between "univariate" and "response".
+univariate_data_long$emotion_type <- sub("_response.*", "", univariate_data_long$region)
+univariate_data_long$emotion_type <- as.factor(sub("univariate_", "", univariate_data_long$emotion_type))
+univariate_data_long$region <- NULL
+# Make the "surprised" condition the reference level.
+univariate_data_long$emotion_type <- relevel(univariate_data_long$emotion_type, ref = "surprised")
+
+## Right amygdala. ##
+right_amygdala_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "amy_R_Thr50"))
+
+## Left amygdala. ##
+left_amygdala_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "amy_L_Thr50"))
+
+## Right accumbens. ##
+right_accumbens_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "accumbens_R_Thr25"))
+
+## Left accumbens. ##
+left_accumbens_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "accumbens_L_Thr25"))
+
+## Right anterior insula. ##
+right_anteriorinsula_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "anteriorinsula_R_xu2021"))
+
+## Left anterior insula. ##
+left_anteriorinsula_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "anteriorinsula_L_xu2021"))
+
+## Right vmPFC. ##
+right_vmpfc_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "vmpfc_R_xu2021"))
+
+## Left vmPFC. ##
+left_vmpfc_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "vmpfc_L_xu2021"))
+
+## Right V1. ##
+right_V1_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "V1_R_Thr75"))
+
+## Left V1. ##
+left_V1_univariate_by_emotion <- lm(univariate_response ~ emotion_type, data = subset(univariate_data_long, region_name == "V1_L_Thr75"))
+```
+
+```{r univariate_contrasts_table,echo=FALSE}
+
+tab_model(right_amygdala_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Right amygdala (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+
+tab_model(left_amygdala_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Left amygdala (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+
+tab_model(right_accumbens_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Right accumbens (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+
+tab_model(left_accumbens_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Left accumbens (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+
+tab_model(right_anteriorinsula_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Right anterior insula (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Left anterior insula (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_vmpfc_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Right vmPFC (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Left vmPFC (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_V1_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Right V1 (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_univariate_by_emotion,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          digits = 3,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "Emotion: Threatening","Emotion: Nonthreatening"),
+          dv.labels = c("Univariate response: Left V1 (Reference level: ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
+
+## *ELA and univariate neural responses.*
+### Table S26: Does ELA relate to univariate responses to ambiguous, threatening, or nonthreatening stimuli?
+```{r ctq_univariate,include=FALSE}
+
+## Right amygdala. ##
+# Angry.
+right_amygdala_ctq_univariate_angry <- lm(univariate_angry_response_amy_R_Thr50_smoothed ~ CTQ_log_z, data = data)
+
+# Surprised.
+right_amygdala_ctq_univariate_surprised <- lm(univariate_surprised_response_amy_R_Thr50_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+right_amygdala_ctq_univariate_happy <- lm(univariate_happy_response_amy_R_Thr50_smoothed ~ CTQ_log_z, data = data)
+
+## Left amygdala. ##
+# Angry.
+left_amygdala_ctq_univariate_angry <- lm(univariate_angry_response_amy_L_Thr50_smoothed ~ CTQ_log_z, data = data)
+# Surprised.
+left_amygdala_ctq_univariate_surprised <- lm(univariate_surprised_response_amy_L_Thr50_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+left_amygdala_ctq_univariate_happy <- lm(univariate_happy_response_amy_L_Thr50_smoothed ~ CTQ_log_z, data = data)
+
+
+## Right accumbens. ##
+# Angry.
+right_accumbens_ctq_univariate_angry <- lm(univariate_angry_response_accumbens_R_Thr25_smoothed ~ CTQ_log_z, data = data)
+# Surprised.
+right_accumbens_ctq_univariate_surprised <- lm(univariate_surprised_response_accumbens_R_Thr25_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+right_accumbens_ctq_univariate_happy <- lm(univariate_happy_response_accumbens_R_Thr25_smoothed ~ CTQ_log_z, data = data)
+
+## Left accumbens. ##
+# Angry.
+left_accumbens_ctq_univariate_angry <- lm(univariate_angry_response_accumbens_L_Thr25_smoothed ~ CTQ_log_z, data = data)
+# Surprised.
+left_accumbens_ctq_univariate_surprised <- lm(univariate_surprised_response_accumbens_L_Thr25_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+left_accumbens_ctq_univariate_happy <- lm(univariate_happy_response_accumbens_L_Thr25_smoothed ~ CTQ_log_z, data = data)
+
+## Right anterior insula. ##
+# Angry.
+right_anteriorinsula_ctq_univariate_angry <- lm(univariate_angry_response_anteriorinsula_R_xu2021_smoothed ~ CTQ_log_z, data = data)
+# Surprised.
+right_anteriorinsula_ctq_univariate_surprised <- lm(univariate_surprised_response_anteriorinsula_R_xu2021_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+right_anteriorinsula_ctq_univariate_happy <- lm(univariate_happy_response_anteriorinsula_R_xu2021_smoothed ~ CTQ_log_z, data = data)
+
+## Left anterior insula. ##
+# Angry.
+left_anteriorinsula_ctq_univariate_angry <- lm(univariate_angry_response_anteriorinsula_L_xu2021_smoothed ~ CTQ_log_z, data = data)
+# Surprised.
+left_anteriorinsula_ctq_univariate_surprised <- lm(univariate_surprised_response_anteriorinsula_L_xu2021_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+left_anteriorinsula_ctq_univariate_happy <- lm(univariate_happy_response_anteriorinsula_L_xu2021_smoothed ~ CTQ_log_z, data = data)
+
+## Right vmPFC. ##
+# Angry.
+right_vmpfc_ctq_univariate_angry <- lm(univariate_angry_response_vmpfc_R_xu2021_smoothed ~ CTQ_log_z, data = data)
+# Surprised.
+right_vmpfc_ctq_univariate_surprised <- lm(univariate_surprised_response_vmpfc_R_xu2021_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+right_vmpfc_ctq_univariate_happy <- lm(univariate_happy_response_vmpfc_R_xu2021_smoothed ~ CTQ_log_z, data = data)
+
+## Left vmPFC. ##
+# Angry.
+left_vmpfc_ctq_univariate_angry <- lm(univariate_angry_response_vmpfc_L_xu2021_smoothed ~ CTQ_log_z, data = data)
+# Surprised.
+left_vmpfc_ctq_univariate_surprised <- lm(univariate_surprised_response_vmpfc_L_xu2021_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+left_vmpfc_ctq_univariate_happy <- lm(univariate_happy_response_vmpfc_L_xu2021_smoothed ~ CTQ_log_z, data = data)
+
+
+## Right V1. ##
+# Angry.
+right_V1_ctq_univariate_angry <- lm(univariate_angry_response_V1_R_Thr75_smoothed ~ CTQ_log_z, data = data)
+# Surprised.
+right_V1_ctq_univariate_surprised <- lm(univariate_surprised_response_V1_R_Thr75_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+right_V1_ctq_univariate_happy <- lm(univariate_happy_response_V1_R_Thr75_smoothed ~ CTQ_log_z, data = data)
+
+## Left V1. ##
+# Angry.
+left_V1_ctq_univariate_angry <- lm(univariate_angry_response_V1_L_Thr75_smoothed ~ CTQ_log_z, data = data)
+# Surprised.
+left_V1_ctq_univariate_surprised <- lm(univariate_surprised_response_V1_L_Thr75_smoothed ~ CTQ_log_z, data = data)
+# Happy.
+left_V1_ctq_univariate_happy <- lm(univariate_happy_response_V1_L_Thr75_smoothed ~ CTQ_log_z, data = data)
+```
+
+```{r ctq_univariate_table,echo=FALSE}
+
+# Amygdala.
+tab_model(right_amygdala_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right amygdala (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_amygdala_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right amygdala (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_amygdala_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right amygdala (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_amygdala_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left amygdala (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_amygdala_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left amygdala (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_amygdala_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left amygdala (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+
+# Accumbens.
+tab_model(right_accumbens_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right accumbens (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_accumbens_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right accumbens (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_accumbens_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right accumbens (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_accumbens_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left accumbens (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_accumbens_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left accumbens (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_accumbens_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left accumbens (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+
+# Anterior insula.
+tab_model(right_anteriorinsula_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right anterior insula (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_anteriorinsula_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right anterior insula (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_anteriorinsula_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right anterior insula (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left anterior insula (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left anterior insula (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_anteriorinsula_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left anterior insula (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+
+# vmPFC.
+tab_model(right_vmpfc_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right vmPFC (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_vmpfc_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right vmPFC (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_vmpfc_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right vmPFC (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left vmPFC (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left vmPFC (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_vmpfc_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left vmPFC (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+
+
+# V1.
+tab_model(right_V1_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right V1 (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_V1_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right V1 (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(right_V1_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Right V1 (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_ctq_univariate_angry,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left V1 (threatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_ctq_univariate_happy,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left V1 (nonthreatening)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+tab_model(left_V1_ctq_univariate_surprised,
+          show.stat = TRUE, show.df = TRUE, show.se = TRUE,
+          col.order = c( "est", "ci", "stat", "df.error", "se", "p"),  
+          pred.labels = c("Intercept", "ELA (log CTQ score, z-scored)"),
+          dv.labels = c("Univariate response: Left V1 (ambiguous)"),
+          strings = c(est = "beta coefficient", ci ="95% CI", stat = "t", df = "DF", se = "standard error"))
+
+```
