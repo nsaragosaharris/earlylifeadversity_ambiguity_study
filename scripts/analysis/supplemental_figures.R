@@ -1,7 +1,12 @@
+# This has the scripts for the plots included in the supplement.
+# Corresponding paper:  Early life adversity is associated with greater similarity in neural representations of ambiguous and threatening stimuli.
 # Written by Natalie Saragosa-Harris.
-# August 2022.
 
+library(plyr)
+library(readr)
+library(psych)
 library(dplyr)
+library(tidyr)
 library(glue)
 library(ggplot2)
 library(lme4)
@@ -11,217 +16,132 @@ library(sjmisc)
 library(sjlabelled)
 library(stargazer) #https://zief0002.github.io/book-8252/pretty-printing-tables-in-markdown.html
 library(reshape2)
+library(vtable) # for summary tables (descriptive statistics).
+library(gtsummary) # also for summary tables.
+library(pander) # For formatting tables for t tests results.
 library(patchwork)
 library(ggeffects)
 library(reghelper) # for simple slopes.
+library(qwraps2)
+options(qwraps2_markup = "markdown")
+options(scipen=1, digits=2)
 
-
-datadirectory <- '' # Add directory where data are saved here.
-data <- read.csv(glue('{datadirectory}behavior_rsa_conditionlevel_shortdata.csv'),stringsAsFactors = TRUE) # Read in data.
-
-# Add z scores to the data.
-data$CTQ_Total_z <- as.numeric(scale(data$CTQ_Total,center=TRUE))
-data$CTQ_log <- as.numeric(log(data$CTQ_Total)) # Note: in R, log function defaults to natural log.
-data$CTQ_log_z <- as.numeric(scale(data$CTQ_log,center=TRUE))
-data$HONOS_total_z <- scale(data$HONOS_total, center = TRUE)[,]
-data$angry_rt_average_z <- scale(data$angry_rt_average, center = TRUE)[,]
-data$surprised_rt_average_z <- scale(data$surprised_rt_average, center = TRUE)[,]
-data$happy_rt_average_z <- scale(data$happy_rt_average, center = TRUE)[,]
-data$rt_difference_all_positive_vs_negative_z <- scale(data$rt_difference_all_positive_vs_negative, center = TRUE)[,]
-data$rt_difference_positive_vs_negative_surprised_z <- scale(data$rt_difference_positive_vs_negative_surprised, center = TRUE)[,]
-data$rt_difference_surprised_vs_angry_z <- scale(data$rt_difference_surprised_vs_angry, center = TRUE)[,]
-data$rt_difference_surprised_vs_happy_z <- scale(data$rt_difference_surprised_vs_happy, center = TRUE)[,]
-data$rt_difference_surprised_vs_unambiguous_z <- scale(data$rt_difference_surprised_vs_unambiguous, center = TRUE)[,]
-data$surprised_negative_rating_rt_average_z <- scale(data$surprised_negative_rating_rt_average, center = TRUE)[,]
-data$surprised_positive_rating_rt_average_z <- scale(data$surprised_positive_rating_rt_average, center = TRUE)[,]
-data$all_negative_rating_rt_average_z <- scale(data$all_negative_rating_rt_average, center = TRUE)[,]
-data$all_positive_rating_rt_average_z <- scale(data$all_positive_rating_rt_average, center = TRUE)[,]
+data <- read.csv('data/behavior_rsa_shortdata.csv',stringsAsFactors = TRUE) # Read in data.
+long_behavioral_data <- read.csv('data/behavioraltask_longdata.csv',stringsAsFactors = TRUE)
+tsnr_data <- read.csv('data/tSNR_estimates.csv',stringsAsFactors = TRUE) # Read in temporal signal to noise data.
 
 # Theme for plots.
 nsh_theme <- theme(text = element_text(family = "Avenir"),
-                   title = element_text(size=22, vjust=2, face="bold"),
-                   plot.subtitle = element_text(color="gray40", size=18, face="bold.italic"),
-                   axis.title.x= element_text(size=20, vjust=-0.3),
-                   axis.title.y= element_text(size=20, vjust=1.5),
-                   axis.text.x= element_text(size=20, colour="black"),
-                   axis.text.y= element_text(size=20, colour="black"),
-                   strip.text = element_text(size=20, face="bold"),
+                   title = element_text(size=28, vjust=2, face="bold"),
+                   plot.subtitle = element_text(size=28,color="gray40", face="bold.italic"),
+                   axis.title.x= element_text(size=28, vjust=-0.3),
+                   axis.title.y= element_text(size=28, vjust=1.5),
+                   axis.text.x= element_text(size=28, colour="black"),
+                   axis.text.y= element_text(size=28, colour="black"),
+                   strip.text = element_text(size=28, face="bold"),
                    panel.background = element_blank(),
                    axis.line = element_line(colour = "black"))
 
-
 # Color dictionary for plots, so that color matching is consistent.
 fivecolors <- c("accumbens" = "#78B7C5",
-                "amygdala" = "#EBCC2A", 
-                "anteriorinsula" = "#C5776C", 
+                "amygdala" = "#EBCC2A",
+                "anteriorinsula" = "#C5776C",
                 "vmpfc" = "#9CB7B5",
                 "V1" = "#A09CB0")
 
-####################################################################################################
-############## Figure 2: ELA and task behavior interact to predict global functioning. #############
-####################################################################################################
-# Note: Do not z score these because the unstandardized 0 point is meaningful.
+###############################################################################################
+###### Supplemental Figure 2: Distributions of questionnaire scores and behavioral data. ######
+###############################################################################################
 
-honos_ctq_reactiontime_surprised_vs_angry <- lm(HONOS_total_z ~ CTQ_log_z*rt_difference_surprised_vs_angry, data = data)
-summary(honos_ctq_reactiontime_surprised_vs_angry)
-
-simple_slopes(honos_ctq_reactiontime_surprised_vs_angry,
-              levels=list(CTQ_log_z=c(-1.5,1.5, 'sstest')))
-
-honos_ctq_reactiontime_surprised_vs_happy <- lm(HONOS_total_z ~ CTQ_log_z*rt_difference_surprised_vs_happy, data = data)
-summary(honos_ctq_reactiontime_surprised_vs_happy)
-
-simple_slopes(honos_ctq_reactiontime_surprised_vs_happy,
-              levels=list(CTQ_log_z=c(-1.5,1.5, 'sstest')))
-
-figure2a <- plot_model(honos_ctq_reactiontime_surprised_vs_angry, type = "pred",
-                       terms = c("rt_difference_surprised_vs_angry","CTQ_log_z[-1.5,1.5]"), 
-                       colors = c("gray60", "#00573D"),
-                       line.size = 2,
-                       alpha = 0.2) +
-  geom_vline(xintercept = 0, size = 1, linetype = "dotted") +
-  ylim(-6,6) +
-  xlab(expression(atop("Average reaction time difference (s):","ambiguous - threatening"))) +
-  ylab("Global functioning impairment") +
-  nsh_theme +
-  theme(legend.position = "none") # Remove legend for now.
-
-figure2b <- plot_model(honos_ctq_reactiontime_surprised_vs_happy, type = "pred", 
-                       terms = c("rt_difference_surprised_vs_happy","CTQ_log_z[-1.5,1.5]"), 
-                       colors = c("gray60", "#00573D"),
-                       line.size = 2,
-                       alpha = 0.2)+
-  ylim(-6,6) +
-  geom_vline(xintercept = 0, size = 1, linetype = "dotted") +
-  labs(title = "ELA x Reaction Time Difference",
-       subtitle = "Reaction time difference: ambiguous - nonthreatening (higher = long spent on ambiguous)") +
-  xlab(expression(atop("Average reaction time difference (s):","ambiguous - nonthreatening"))) +
-  ylab("Global functioning impairment") +
-  nsh_theme +
-  theme(legend.position = "none") # Remove legend for now.
-
-figure2 <- figure2a + figure2b
-figure2
-
-####################################################################################################
-############ Figure 3: ELA and ambiguous/threatening overlap within regions of interest. ###########
-####################################################################################################
-
-# Right amygdala.
-right_amygdala <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_amy_R_Thr50_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["amygdala"]) +
-  labs(title = "Right Amygdala") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") +  ylab("") + 
+ctq_distribution <- ggplot(data, aes(x = CTQ_Total)) +
+  geom_histogram(binwidth = 1, fill = "#7fa99de6", color = "black",aes(y = ..count..)) +
+  geom_density(aes(y = ..count..), color = "black", size = 1) +
+  scale_x_continuous(breaks = seq(25,80,5)) + expand_limits(x = c(25,80)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  # Adding this because otherwise it creates a space in between the bottom of the plot and the x axis.
+  labs(title = "(A) CTQ Total Scores",
+       x = "CTQ Total Score",
+       y = "Number of participants") +
   nsh_theme
 
-# Left amygdala.
-left_amygdala <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_amy_L_Thr50_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["amygdala"]) +
-  labs(title = "Left Amygdala") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") +  ylab("") + 
+honos_distribution <- ggplot(data, aes(x = HONOS_total)) +
+  geom_histogram(binwidth = 1, fill = "#7fa99de6", color = "black") +
+  geom_density(aes(y = ..count..), color = "black", size = 1) +
+  scale_x_continuous(breaks = seq(0,35,5)) +  expand_limits(x = c(-1,35)) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +
+  labs(title = "(B) HoNOS Total Scores",
+       x = "HoNOS Total Score",
+       y = "Number of participants") +
   nsh_theme
 
-# Right accumbens.
-right_accumbens <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_accumbens_R_Thr25_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["accumbens"]) +
-  labs(title = "Right Nucleus Accumbens") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") +  ylab("") + 
+negativitybias_distribution <- ggplot(data, aes(x = Percent_Surprised_Negative)) +
+  geom_histogram(binwidth = 0.05, fill = "#7fa99de6", color = "black") +
+  geom_density(color = "black", size = 1) +
+  scale_x_continuous(breaks = c(0,0.25,0.50,0.75,1.0)) + expand_limits(x = c(0, 1.1)) +
+  scale_y_continuous(limits = c(0,10),breaks = seq(0,10,2),expand = expansion(mult = c(0, 0.05))) +
+  labs(title = "(C) Negativity biases in post-scan task",
+       x = "Proportion ambiguous trials categorized negatively\n",
+       y = "Number of participants") +
   nsh_theme
 
-# Left accumbens.
-left_accumbens <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_accumbens_L_Thr25_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["accumbens"]) +
-  labs(title = "Left Nucleus Accumbens") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") +  ylab("") +
-  nsh_theme
+ctq_distribution
+honos_distribution
+negativitybias_distribution
 
-# Right anterior insula.
-right_anteriorinsula <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_anteriorinsula_R_xu2021_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["anteriorinsula"]) +
-  labs(title = "Right Anterior Insula") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") +  ylab("") + 
-  nsh_theme
 
-# Left anterior insula.
-left_anteriorinsula <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_anteriorinsula_L_xu2021_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["anteriorinsula"]) +
-  labs(title = "Left Anterior Insula") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") +  ylab("") + 
-  nsh_theme
+########################################################################################################
+##### Supplemental Figure 3: Accuracy for threatening and nonthreatening trials in post-scan task. #####
+########################################################################################################
 
-# Right vmPFC.
-right_vmpfc <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_vmpfc_R_xu2021_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["vmpfc"]) +
-  labs(title = "Right vmPFC") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") + ylab("") + 
-  nsh_theme
+# Plot accuracy for angry (percent categorized as negative) and happy (percent categorized as positive) trials in post-scan task.
 
-# Left vmPFC.
-left_vmpfc <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_vmpfc_L_xu2021_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["vmpfc"]) +
-  labs(title = "Left vmPFC") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") + ylab("") + 
-  nsh_theme
+accuracy_data <- data %>% select(Participant_ID, Percent_Angry_Correct, Percent_Happy_Correct) %>%
+  pivot_longer(!Participant_ID, names_to = "trial_type", values_to = "accuracy")
 
-accumbens <- left_accumbens + right_accumbens + plot_layout(ncol = 2)
-amygdala <- left_amygdala + right_amygdala  + plot_layout(ncol = 2)
-anteriorinsula <- left_anteriorinsula + right_anteriorinsula + plot_layout(ncol = 2)
-vmpfc <- left_vmpfc + right_vmpfc + plot_layout(ncol = 2)
+accuracy_data$trial_type <- gsub("Percent_", "", accuracy_data$trial_type)
+accuracy_data$trial_type <- gsub( "_Correct", "", accuracy_data$trial_type)
 
-accumbens
-amygdala
-anteriorinsula
-vmpfc
-####################################################################################################
-################## Supplemental Figure 3: Average RSA values within each region. ###################
-####################################################################################################
 
-longdata <- data[,grepl(glob2rx('Participant_ID|*average_*fisher_z'), names(data))] # Only keep these columns for the descriptive statistics table.
-longdata <- melt(longdata,id.vars = 'Participant_ID', value.name = 'fisher_z')
+angry_happy_accuracy_plot <- ggplot(accuracy_data,aes(x = trial_type, y = accuracy)) + 
+  geom_bar(stat="identity",fill="gray80",alpha=0.5) +
+  geom_jitter(aes(colour = Participant_ID), size = 6, width = 0.25, alpha = 0.4) + 
+  scale_y_continuous(limits = c(0.00,1.00),breaks = seq(0,1,0.25)) +
+  nsh_theme + 
+  theme(legend.position = "none") +
+  labs(title = "Accuracy for non-ambiguous (angry and happy) trials in post-scan task",
+       subtitle = "Angry = percent categorized as negative\nHappy = percent categorized as positive",
+       x = "Trial type\n",
+       y = "Accuracy")
 
-longdata <- longdata %>%
-  mutate(region = 
-           case_when(grepl("_amy_",longdata$variable) ~ "amygdala",
-                     grepl("_accumbens_",longdata$variable) ~ "accumbens",
-                     grepl("_anteriorinsula_",longdata$variable) ~ "anteriorinsula",
-                     grepl("_vmpfc_",longdata$variable) ~ "vmpfc",
-                     grepl("_V1_",longdata$variable) ~ "V1"),
-         hemisphere =
-           case_when(grepl("_R_",longdata$variable) ~ "right",
-                     grepl("_L_",longdata$variable) ~ "left"),
-         comparison = 
-           case_when(grepl("AO_HO",longdata$variable) ~ "threatening/nonthreatening",
-                     grepl("AO_SUR",longdata$variable) ~ "threatening/ambiguous",
-                     grepl("HO_SUR",longdata$variable) ~ "nonthreatening/ambiguous"))
-longdata$regionname <- paste(longdata$hemisphere,"_",longdata$region,sep="")
-factor_columns <- names(longdata)[!(names(longdata) %in% 'fisher_z')] # Make every column except fisher_z column a factor.
-longdata[,factor_columns] <- lapply(longdata[,factor_columns], as.factor)
+angry_happy_accuracy_plot
 
-figureS3 <- ggplot(longdata, aes(fill=region, color = region, y=fisher_z, x=region)) + 
+###############################################################################################
+###### Supplemental Figure 4: Average RSA values within each region. ######
+###############################################################################################
+longdata <- longdata %>% select(Participant_ID,ends_with("fisher_z"))
+
+# Assuming your dataframe is named 'data'
+# Use pivot_longer() function to convert to long format
+longdata <- pivot_longer(longdata, 
+                          cols = -Participant_ID,  # Specify columns to pivot
+                          names_to = "variable",  # Name of the new 'variable' column
+                          values_to = "fisher_z")    # Name of the new 'value' column
+
+longdata <- longdata %>% mutate(region = case_when(grepl("amy", variable, ignore.case = TRUE) ~ "amygdala",
+                                                   grepl("accumbens", variable, ignore.case = TRUE) ~ "accumbens",
+                                                   grepl("anteriorinsula", variable, ignore.case = TRUE) ~ "anteriorinsula",
+                                                   grepl("vmpfc", variable, ignore.case = TRUE) ~ "vmpfc",
+                                                   grepl("V1", variable, ignore.case = TRUE) ~ "V1",
+                                                   TRUE ~ NA_character_)) %>% 
+                          mutate(hemisphere = case_when(grepl("_R_", variable, ignore.case = TRUE) ~ "right",
+                                                        grepl("_L_", variable, ignore.case = TRUE) ~ "left",
+                                                        TRUE ~ NA_character_)) %>% 
+                          mutate(comparison = case_when(grepl("HO_SUR", variable, ignore.case = TRUE) ~ "nonthreatening/ambiguous",
+                                                        grepl("AO_SUR", variable, ignore.case = TRUE) ~ "threatening/ambiguous",
+                                                        grepl("AO_HO", variable, ignore.case = TRUE) ~ "threatening/nonthreatening",
+                                                        TRUE ~ NA_character_))
+
+
+supplementalfigurefour <- ggplot(longdata, aes(fill=region, color = region, y=fisher_z, x=region)) + 
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(shape = 1, width = 0.05, color = "black") +
   scale_y_continuous(breaks = c(0.1,0.3,0.5,0.7,0.9)) +
@@ -242,157 +162,73 @@ figureS3 <- ggplot(longdata, aes(fill=region, color = region, y=fisher_z, x=regi
         legend.position = "none", # Get rid of legend since the regions are already labeled on the x axis.
         axis.line = element_line(colour = "black"))
 
-figureS3
+supplementalfigurefour
 
+###############################################################################################
+###### Supplemental Figure 5: Temporal signal to noise ratios. ######
+###############################################################################################
 
-# Bar plot.
-longdata_toplot <- longdata %>% 
-  dplyr::group_by(region,comparison,hemisphere) %>% 
-  dplyr::summarise(mean = mean(fisher_z), sd = sd(fisher_z))
+# These plots use the filtered_func images, which are the minimally preprocessed BOLD images that are used as  input for first level models.
+# These minimally preprocessed images include include slice-timing correction and motion correction. In this case, it does not have any spatial smoothing.
 
-descriptive_statistics_barplot <- ggplot(longdata_toplot, aes(fill=region, y=mean, x=region)) + 
-  geom_bar(stat="identity") +
-  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2,
-                position=position_dodge(.9)) +
-  facet_grid(cols = vars(hemisphere), rows = vars(comparison)) +
-  xlab("Region") +
-  ylab("Fisher Z Value") + 
-  theme(text = element_text(family = "Avenir"),        
-        axis.title.y= element_text(size=10, vjust=1.5),
-        axis.text.x= element_text(angle = 90, vjust = 0.5, hjust=1, size=10, colour="black"),
-        axis.text.y= element_text(size=10, colour="black"),
-        strip.text = element_text(size=10, face="bold"),
-        panel.background = element_blank(),
-        axis.line = element_line(colour = "black"))
-
-####################################################################################################
-######## Supplemental Figure 4: ELA and ambiguous/threatening overlap within control region. #######
-####################################################################################################
-
-# Right V1.
-right_v1 <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_V1_R_Thr75_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["V1"]) +
-  labs(title = "Right V1") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") + ylab("") + 
+amygdala_filteredfunc_plot <- ggplot(subset(tsnr_data, region == "amygdala"), 
+                                     aes(fill=region, y=average_tSNR_value, x=hemisphere)) +
+  geom_boxplot(outlier.shape = NA) +
+  ylim(0,30) +
+  geom_jitter(shape = 1, width = 0.05, color = "black") +
+  scale_colour_manual(values = fivecolors) +
+  scale_fill_manual(values = fivecolors) +
+  #facet_grid(rows = vars(region)) +
+  labs(subtitle = "Amygdala", y = "Signal to noise ratio") + 
+  theme(legend.position = "none") +
   nsh_theme
 
-# Left V1.
-left_v1 <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_V1_L_Thr75_fisher_z))+
-  geom_smooth(method = "lm",size=3,color = "gray28") +
-  geom_point(size=4, color = fivecolors["V1"]) +
-  labs(title = "Left V1") +
-  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
-  xlab("") + ylab("") + 
+accumbens_filteredfunc_plot <- ggplot(subset(tsnr_data, region == "accumbens"), 
+                                      aes(fill=region, y=average_tSNR_value, x=hemisphere)) +
+  geom_boxplot(outlier.shape = NA) +
+  ylim(0,30) +
+  geom_jitter(shape = 1, width = 0.05, color = "black") +
+  scale_colour_manual(values = fivecolors) +
+  scale_fill_manual(values = fivecolors) +
+  #facet_grid(rows = vars(region)) +
+  labs(subtitle = "Nucleus accumbens",y = " ") +
+  theme(legend.position = "none") +
   nsh_theme
 
-v1 <- left_v1 + right_v1 + plot_layout(ncol = 2)
-
-####################################################################################################
-######### Supplemental Figure 5: Average univariate values by condition within each region. ########
-####################################################################################################
-
-# Descriptive statistics: Average and standard deviations of univariate values for each region.
-# First, create new data frame that is long format.
-
-longdata_univariate <- data[,grepl(glob2rx('Participant_ID|*univariate_*'), names(data))] # Only keep these columns for the descriptive statistics table.
-longdata_univariate <- melt(longdata_univariate,id.vars = 'Participant_ID', value.name = 'univariate_average')
-
-longdata_univariate <- longdata_univariate %>%
-  mutate(region = 
-           case_when(grepl("_amy_",longdata_univariate$variable) ~ "amygdala",
-                     grepl("_accumbens_",longdata_univariate$variable) ~ "accumbens",
-                     grepl("_anteriorinsula_",longdata_univariate$variable) ~ "anteriorinsula",
-                     grepl("_vmpfc_",longdata_univariate$variable) ~ "vmpfc",
-                     grepl("_V1_",longdata_univariate$variable) ~ "V1"),
-         hemisphere =
-           case_when(grepl("_R_",longdata_univariate$variable) ~ "right",
-                     grepl("_L_",longdata_univariate$variable) ~ "left"),
-         emotion = 
-           case_when(grepl("angry",longdata_univariate$variable) ~ "threatening",
-                     grepl("happy",longdata_univariate$variable) ~ "nonthreatening",
-                     grepl("surprised",longdata_univariate$variable) ~ "ambiguous"))
-
-longdata_univariate$regionname <- paste(longdata_univariate$hemisphere,"_",longdata_univariate$region,sep="")
-
-factor_columns <- names(longdata_univariate)[!(names(longdata_univariate) %in% 'univariate_average')] # Make every column except univariate_average column a factor.
-longdata_univariate[,factor_columns] <- lapply(longdata_univariate[,factor_columns], as.factor)
-
-# To make each region have a bigger plot, plot each one separately, with each emotion condition on the x axis.
-
-univariate_plot_theme <- theme(text = element_text(family = "Avenir"), 
-                                panel.spacing = unit(2, "lines"),
-                                #axis.title.x= element_text(size=30, vjust=-0.3),
-                                axis.title.x= element_blank(),# Remove since labels are clear.
-                                axis.title.y= element_text(size=30, vjust=1.5),
-                                axis.text.x= element_text(angle = 90, vjust = 0.5, hjust=1, size=30, colour="black"),
-                                axis.text.y= element_text(size=30, colour="black"),
-                                strip.text = element_text(size=30, face="bold"),
-                                panel.background = element_blank(),
-                                legend.position = "none", # Remove legend for now since we are only plotting one region at a time.
-                                axis.line = element_line(colour = "black"))
-
-amygdala_univariate_plot <- ggplot(subset(longdata_univariate, region == "amygdala"), aes(fill=region, y=univariate_average, x=emotion)) +
+anteriorinsula_filteredfunc_plot <- ggplot(subset(tsnr_data, region == "anteriorinsula"), 
+                                           aes(fill=region, y=average_tSNR_value, x=hemisphere)) +
   geom_boxplot(outlier.shape = NA) +
+  ylim(0,40) +
   geom_jitter(shape = 1, width = 0.05, color = "black") +
   scale_colour_manual(values = fivecolors) +
   scale_fill_manual(values = fivecolors) +
-  facet_grid(cols = vars(hemisphere), rows = vars(region)) +
-  xlab("Stimulus type") +
-  ylab("Average univariate response") + 
-  univariate_plot_theme
+  labs(subtitle = "Anterior insula", y = " ") +
+  theme(legend.position = "none") +
+  nsh_theme
 
-accumbens_univariate_plot <- ggplot(subset(longdata_univariate, region == "accumbens"), aes(fill=region, y=univariate_average, x=emotion)) +
+
+vmpfc_filteredfunc_plot <- ggplot(subset(tsnr_data, region == "vmpfc"), 
+                                  aes(fill=region, y=average_tSNR_value, x=hemisphere)) +
   geom_boxplot(outlier.shape = NA) +
+  ylim(0,40) +
   geom_jitter(shape = 1, width = 0.05, color = "black") +
   scale_colour_manual(values = fivecolors) +
   scale_fill_manual(values = fivecolors) +
-  facet_grid(cols = vars(hemisphere), rows = vars(region)) +
-  xlab("Stimulus type") +
-  ylab("Average univariate response") + 
-  univariate_plot_theme
+  labs(subtitle = "\nvmPFC",y = "Signal to noise ratio") +
+  theme(legend.position = "none") +
+  nsh_theme
 
-anteriorinsula_univariate_plot<- ggplot(subset(longdata_univariate, region == "anteriorinsula"), aes(fill=region, y=univariate_average, x=emotion)) +
+v1_filteredfunc_plot <- ggplot(subset(tsnr_data, region == "V1"), 
+                               aes(fill=region, y=average_tSNR_value, x=hemisphere)) +
   geom_boxplot(outlier.shape = NA) +
+  ylim(0,50) +
   geom_jitter(shape = 1, width = 0.05, color = "black") +
   scale_colour_manual(values = fivecolors) +
   scale_fill_manual(values = fivecolors) +
-  facet_grid(cols = vars(hemisphere), rows = vars(region)) +
-  xlab("Stimulus type") +
-  ylab("Average univariate response") + 
-  univariate_plot_theme
+  labs(subtitle = "\nV1",y = " ") +
+  theme(legend.position = "none") +
+  nsh_theme
 
-vmpfc_univariate_plot<- ggplot(subset(longdata_univariate, region == "vmpfc"), aes(fill=region, y=univariate_average, x=emotion)) +
-  geom_boxplot(outlier.shape = NA) +
-  geom_jitter(shape = 1, width = 0.05, color = "black") +
-  scale_colour_manual(values = fivecolors) +
-  scale_fill_manual(values = fivecolors) +
-  facet_grid(cols = vars(hemisphere), rows = vars(region)) +
-  xlab("Stimulus type") +
-  ylab("Average univariate response") + 
-  univariate_plot_theme
-
-V1_univariate_plot <- ggplot(subset(longdata_univariate, region == "V1"), aes(fill=region, y=univariate_average, x=emotion)) +
-  geom_boxplot(outlier.shape = NA) +
-  geom_jitter(shape = 1, width = 0.05, color = "black") +
-  scale_colour_manual(values = fivecolors) +
-  scale_fill_manual(values = fivecolors) +
-  facet_grid(cols = vars(hemisphere), rows = vars(region)) +
-  xlab("Stimulus type") +
-  ylab("Average univariate response") + 
-  univariate_plot_theme
-
-
-
-amygdala_univariate_plot + ylim(-1,2)
-
-accumbens_univariate_plot + ylim(-3,2)
-
-anteriorinsula_univariate_plot + ylim(-2,2)
-
-vmpfc_univariate_plot + ylim(-3,2)
-
-V1_univariate_plot + ylim(-3,5)
+amygdala_filteredfunc_plot + accumbens_filteredfunc_plot + anteriorinsula_filteredfunc_plot + vmpfc_filteredfunc_plot + v1_filteredfunc_plot +
+  plot_layout(ncol = 3) +
+  plot_annotation(title = "Temporal signal to noise ratio by region", subtitle = "Minimally preprocessed, unmodeled BOLD images\n") & nsh_theme
