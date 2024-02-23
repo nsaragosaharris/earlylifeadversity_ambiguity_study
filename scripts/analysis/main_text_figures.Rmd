@@ -1,0 +1,225 @@
+---
+title: |
+  |   
+  | Main Text Figures
+
+author: "Natalie Saragosa-Harris"
+date: "October 2023"
+output:
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+
+```{r settings, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,warning = FALSE, message = FALSE)
+```
+
+```{r read_data, include=FALSE}
+library(plyr)
+library(dplyr)
+library(glue)
+library(ggplot2)
+library(sjPlot) #https://cran.r-project.org/web/packages/sjPlot/vignettes/tab_model_estimates.html
+library(patchwork)
+library(qwraps2)
+options(qwraps2_markup = "markdown")
+options(scipen=1, digits=2)
+
+data <- read.csv('data/behavior_rsa_shortdata.csv',stringsAsFactors = TRUE) # Read in data.
+
+```
+
+```{r plot_themes, include=FALSE}
+# Theme for plots.
+nsh_theme <- theme(text = element_text(family = "Avenir"),
+                   title = element_text(size=14, vjust=2, face="bold"),
+                   axis.title.x= element_text(size=14, vjust=-0.3),
+                   axis.title.y= element_text(size=14, vjust=1.5),
+                   axis.text.x= element_text(size=14, colour="black"),
+                   axis.text.y= element_text(size=14, colour="black"),
+                   legend.title = element_text(size=14, colour="black"),
+                   legend.text = element_text(size=14, colour="black"),
+                   strip.text = element_text(size=14, face="bold"),
+                   panel.background = element_blank(),
+                   axis.line = element_line(colour = "black"))
+
+# Color dictionary for plots, so that color matching is consistent.
+fivecolors <- c("accumbens" = "#78B7C5",
+                "amygdala" = "#EBCC2A",
+                "anteriorinsula" = "#C5776C",
+                "vmpfc" = "#9CB7B5",
+                "V1" = "#A09CB0")
+```
+
+\newpage
+<br>
+<br>
+
+# Main Text Figure 2: ELA and task behavior interact to predict global functioning.
+```{r figuretwo,echo=FALSE,message=FALSE,warnings=FALSE}
+honos_ctq_reactiontime_surprised_vs_angry <- lm(HONOS_total_z ~ CTQ_log_z*rt_difference_surprised_vs_angry, data = data)
+
+honos_ctq_reactiontime_surprised_vs_happy <- lm(HONOS_total_z ~ CTQ_log_z*rt_difference_surprised_vs_happy, data = data)
+
+figure2a <- plot_model(honos_ctq_reactiontime_surprised_vs_angry, type = "pred",
+                       terms = c("rt_difference_surprised_vs_angry","CTQ_log_z[-1.5,1.5]"), 
+                       colors = c("gray60", "#00573D"),
+                       line.size = 2,
+                       alpha = 0.2) +
+  geom_vline(xintercept = 0, size = 1, linetype = "dotted") +
+  ylim(-6,6) +
+  labs(title = "(A)") +
+  xlab(expression(atop("Average reaction time difference (s):","ambiguous - threatening"))) +
+  ylab("Global functioning impairment") +
+  scale_color_manual(values =  c("gray60", "#00573D"), name = "CTQ log z score") + 
+  scale_fill_manual(values =  c("gray60", "#00573D")) + 
+  nsh_theme
+
+figure2b <- plot_model(honos_ctq_reactiontime_surprised_vs_happy, type = "pred", 
+                       terms = c("rt_difference_surprised_vs_happy","CTQ_log_z[-1.5,1.5]"), 
+                       line.size = 2,
+                       alpha = 0.2)+
+  ylim(-6,6) +
+  geom_vline(xintercept = 0, size = 1, linetype = "dotted") +
+  labs(title = "(B)") +
+  xlab(expression(atop("Average reaction time difference (s):","ambiguous - nonthreatening"))) +
+  ylab("Global functioning impairment") +
+  scale_color_manual(values =  c("gray60", "#00573D"), name = "CTQ log z score") + 
+  scale_fill_manual(values =  c("gray60", "#00573D")) + 
+  nsh_theme
+
+
+figure2a
+figure2b
+```
+
+\newpage
+<br>
+<br>
+
+# Main Text Figure 3: ELA and ambiguous/threatening overlap within regions of interest.
+```{r figurethree,echo=FALSE,message=FALSE,warnings=FALSE}
+# Right amygdala.
+right_amygdala <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_amy_R_Thr50_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["amygdala"]) +
+  labs(title = "Right Amygdala",
+       x = "ELA (log CTQ score, z-scored)",
+       y = " ") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+# Left amygdala.
+left_amygdala <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_amy_L_Thr50_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["amygdala"]) +
+  labs(title = "Left Amygdala",
+       x = "ELA (log CTQ score, z-scored)",
+       y = "Ambiguous/threatening overlap (Fisher z score)") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+# Right accumbens.
+right_accumbens <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_accumbens_R_Thr25_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["accumbens"]) +
+  labs(title = "Right Nucleus Accumbens",
+       x = "ELA (log CTQ score, z-scored)",
+       y = " ") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+# Left accumbens.
+left_accumbens <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_accumbens_L_Thr25_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["accumbens"]) +
+  labs(title = "Left Nucleus Accumbens",
+       x = "ELA (log CTQ score, z-scored)",
+       y = "Ambiguous/threatening overlap (Fisher z score)") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+# Right anterior insula.
+right_anteriorinsula <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_anteriorinsula_R_xu2021_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["anteriorinsula"]) +
+  labs(title = "Right Anterior Insula",
+       x = "ELA (log CTQ score, z-scored)",
+       y = " ") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+# Left anterior insula.
+left_anteriorinsula <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_anteriorinsula_L_xu2021_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["anteriorinsula"]) +
+  labs(title = "Left Anterior Insula",
+       x = "ELA (log CTQ score, z-scored)",
+       y = "Ambiguous/threatening overlap (Fisher z score)") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+# Right vmPFC.
+right_vmpfc <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_vmpfc_R_xu2021_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["vmpfc"]) +
+  labs(title = "Right vmPFC",
+       x = "ELA (log CTQ score, z-scored)",
+       y = " ") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+# Left vmPFC.
+left_vmpfc <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_vmpfc_L_xu2021_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["vmpfc"]) +
+  labs(title = "Left vmPFC",
+       x = "ELA (log CTQ score, z-scored)",
+       y = "Ambiguous/threatening overlap (Fisher z score)") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+
+# Right V1.
+right_v1 <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_V1_R_Thr75_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["V1"]) +
+  labs(title = "Right V1",
+       x = "ELA (log CTQ score, z-scored)",
+       y = " ") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+# Left V1.
+left_v1 <- ggplot(data,aes(x = CTQ_log_z, y = AO_SUR_average_V1_L_Thr75_fisher_z))+
+  geom_smooth(method = "lm",size=3,color = "gray28") +
+  geom_point(size=4, color = fivecolors["V1"]) +
+  labs(title = "Left V1",
+       x = "ELA (log CTQ score, z-scored)",
+       y = "Ambiguous/threatening overlap (Fisher z score)") +
+  scale_x_continuous(limits = c(-2, 3), breaks = seq(-2, 2, by = 1)) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0.1, 0.9, by = 0.2)) +
+  nsh_theme
+
+accumbens <- left_accumbens + right_accumbens + plot_layout(ncol = 2)
+amygdala <- left_amygdala + right_amygdala  + plot_layout(ncol = 2)
+anteriorinsula <- left_anteriorinsula + right_anteriorinsula + plot_layout(ncol = 2)
+vmpfc <- left_vmpfc + right_vmpfc + plot_layout(ncol = 2)
+v1 <- left_v1 + right_v1 + plot_layout(ncol = 2)
+
+accumbens
+amygdala
+anteriorinsula
+vmpfc
+v1
+```
